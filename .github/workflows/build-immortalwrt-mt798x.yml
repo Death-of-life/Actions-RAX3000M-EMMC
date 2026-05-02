@@ -8,7 +8,7 @@
 # Description: Build OpenWrt using GitHub Actions
 #
 
-name: Build ImmortalWrt-mt798x
+name: Build ImmortalWrt RAX3000M eMMC
 
 permissions: write-all
 # 开启写权限，防止无法上传到release
@@ -20,11 +20,6 @@ on:
         description: 'SSH connection to Actions'
         required: false
         default: false
-        type: boolean
-      USE_MTWIFI_CFG:
-        description: 'Use mtwifi-cfg'
-        required: true
-        default: true
         type: boolean
       USE_NX30PRO_EEPROM:
         description: 'Use nx30pro eeprom'
@@ -40,7 +35,10 @@ on:
     - cron: 0 8 * * 2
 
 env:
-  REPO_URL: https://github.com/hanwckf/immortalwrt-mt798x
+  REPO_URL: https://github.com/immortalwrt/immortalwrt
+  REPO_BRANCH: v24.10.6
+  KERNEL_VERSION: 6.6.133
+  EMMC_DTS: target/linux/mediatek/dts/mt7981b-cmcc-rax3000m-emmc.dtso
   FREE_DISK_SH: scripts/free_disk_space.sh
   ENV_SH: scripts/environment.sh
   DIY_SH: scripts/diy.sh
@@ -62,7 +60,6 @@ jobs:
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
-        echo "USE_MTWIFI_CFG=${{ github.event.inputs.USE_MTWIFI_CFG }}" >> $GITHUB_ENV
         echo "USE_NX30PRO_EEPROM=${{ github.event.inputs.USE_NX30PRO_EEPROM }}" >> $GITHUB_ENV
         echo "USE_52MHZ=${{ github.event.inputs.USE_52MHZ }}" >> $GITHUB_ENV
         chmod +x $FREE_DISK_SH && $FREE_DISK_SH
@@ -81,14 +78,14 @@ jobs:
     - name: 克隆源码
       working-directory: /workdir
       run: |
-        git clone $REPO_URL openwrt
+        git clone --depth 1 --branch "$REPO_BRANCH" "$REPO_URL" openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
     - name: 开启缓存
       uses: klever1988/cachewrtbuild@main
       with:
         ccache: 'true'
-        mixkey: 'openwrt21-cortexa53'
+        mixkey: 'immortalwrt-24.10-kernel-6.6-cortexa53'
         prefix: ${{ github.workspace }}/openwrt
 
     - name: 更新 & 安装 feeds & 执行脚本
@@ -97,8 +94,6 @@ jobs:
         chmod +x $GITHUB_WORKSPACE/$DIY1_SH && $GITHUB_WORKSPACE/$DIY1_SH
         git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git config --global user.name "github-actions[bot]"
-        #git fetch https://github.com/hanwckf/immortalwrt-mt798x
-        #git merge FETCH_HEAD
         ./scripts/feeds update -a && ./scripts/feeds install -a        
         chmod +x $GITHUB_WORKSPACE/$DIY_SH && $GITHUB_WORKSPACE/$DIY_SH
 
@@ -120,25 +115,22 @@ jobs:
         [ -e files ] && mv files openwrt/files
         cat configs/rax3000m-emmc_mtksdk.config >> openwrt/.config
 
-    - name: 设置无线控制界面样式
-      if: env.USE_MTWIFI_CFG == 'true'
-      run: |
-        sed -i '/CONFIG_PACKAGE_luci-app-mtk=y/{N;N;N;s/CONFIG_PACKAGE_luci-app-mtk=y\nCONFIG_PACKAGE_luci-i18n-mtk-zh-cn=y\nCONFIG_PACKAGE_wifi-profile=y\nCONFIG_WIFI_NORMAL_SETTING=y/CONFIG_PACKAGE_lua-cjson=y\nCONFIG_PACKAGE_luci-app-mtwifi-cfg=y\nCONFIG_PACKAGE_luci-i18n-mtwifi-cfg-zh-cn=y\nCONFIG_PACKAGE_mtwifi-cfg=y/}' openwrt/.config
-   
     - name: 设置是否使用 nx30pro eeprom
       if: env.USE_NX30PRO_EEPROM == 'true'
       run: |
         mkdir -p openwrt/files/lib/firmware
         cp eeprom/nx30pro_eeprom.bin openwrt/files/lib/firmware/MT7981_iPAiLNA_EEPROM.bin
         chmod 755 openwrt/files/lib/firmware/MT7981_iPAiLNA_EEPROM.bin
-        sed -i 's/caldata_extract_mmc/# caldata_extract_mmc/' openwrt/target/linux/mediatek/mt7981/base-files/lib/preinit/90_extract_caldata
+        if [ -f openwrt/target/linux/mediatek/mt7981/base-files/lib/preinit/90_extract_caldata ]; then
+          sed -i 's/caldata_extract_mmc/# caldata_extract_mmc/' openwrt/target/linux/mediatek/mt7981/base-files/lib/preinit/90_extract_caldata
+        fi
     
     - name: 设置 dts 闪存频率
       if: env.USE_52MHZ == 'true'
       run: |
-        sed -i -e '/bus-width = <8>;/ a\	cap-mmc-highspeed;' openwrt/target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cmcc-rax3000m-emmc.dts
-        sed -i 's/26000000/52000000/g' openwrt/target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cmcc-rax3000m-emmc.dts
-        grep max-frequency openwrt/target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cmcc-rax3000m-emmc.dts
+        sed -i -e '/bus-width = <8>;/ a\			cap-mmc-highspeed;' "openwrt/$EMMC_DTS"
+        sed -i 's/26000000/52000000/g' "openwrt/$EMMC_DTS"
+        grep max-frequency "openwrt/$EMMC_DTS"
 
     - name: SSH 链接
       uses: P3TERX/ssh2actions@v1.0.0
@@ -197,15 +189,12 @@ jobs:
       id: tag
       if: env.UPLOAD_RELEASE == 'true' && steps.compile.outputs.status == 'success' && !cancelled()
       run: |
-        echo -e "### immortalwrt-mt7981-cmcc_rax3000m-emmc" >> release.txt
-        wlan_luci_interface=""
-        if grep -q 'CONFIG_PACKAGE_mtwifi-cfg=y' openwrt/.config; then
-          echo "- 使用 OpenWrt 原生无线控制界面" >> release.txt
-          wlan_luci_interface="mtwifi-cfg"
-        else
-          echo "- 使用 MTK SDK 无线控制界面" >> release.txt
-          wlan_luci_interface="luci-app-mtk"
-        fi
+        echo -e "### immortalwrt-v24.10.6-kernel-${KERNEL_VERSION}-mt7981-cmcc_rax3000m-emmc" >> release.txt
+        echo "- 上游源码: immortalwrt/immortalwrt ${REPO_BRANCH}" >> release.txt
+        echo "- 内核版本: ${KERNEL_VERSION}" >> release.txt
+        echo "- 默认 LAN IP: 10.0.0.1" >> release.txt
+        echo "- 集成 luci-app-openclash" >> release.txt
+        wlan_luci_interface="official-wireless"
         eeprom_status=""
         if [ -e openwrt/files/lib/firmware/MT7981_iPAiLNA_EEPROM.bin ] ; then
           echo "- eeprom 使用 H3C NX30 Pro 提取版本" >> release.txt
@@ -214,9 +203,9 @@ jobs:
           echo "- eeprom 未修改" >> release.txt
           eeprom_status="default_eeprom"
         fi
-        max_frequency=$(($(grep -oP "max-frequency = <\K[0-9]*" openwrt/target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cmcc-rax3000m-emmc.dts) / 1000000))
+        max_frequency=$(($(grep -oP "max-frequency = <\K[0-9]*" "openwrt/$EMMC_DTS") / 1000000))
         echo "- 使用闪存频率: ${max_frequency}MHz" >> release.txt
-        release_tag=$(date +"%Y.%m.%d-mt7981-cmcc_rax3000m-emmc-${wlan_luci_interface}-${eeprom_status}-${max_frequency}MHz")
+        release_tag=$(date +"%Y.%m.%d-immortalwrt-v24.10.6-kernel-6.6.133-mt7981-cmcc_rax3000m-emmc-${wlan_luci_interface}-${eeprom_status}-${max_frequency}MHz")
         echo "release_tag=${release_tag}" >> $GITHUB_OUTPUT
         echo "status=success" >> $GITHUB_OUTPUT
 

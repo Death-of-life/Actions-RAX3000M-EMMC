@@ -2,7 +2,7 @@
 使用 GitHub Actions 在线编译定制 CMCC RAX3000M eMMC version 的 immortalwrt-mt798x 固件
 
 ## 固件特性
-使用 [hanwckf](https://github.com/hanwckf) 大佬的 [immortalwrt-mt798x](https://github.com/hanwckf/immortalwrt-mt798x) 项目仓库，'openwrt-21.02' 分支源码编译，无线使用 mtwifi 原厂无线驱动，内核版本 5.4.x
+使用 [ImmortalWrt](https://github.com/immortalwrt/immortalwrt) 官方 `v24.10.6` 源码编译，内核版本 6.6.133。
 
 项目详情：[immortalwrt-mt798x项目介绍](https://cmi.hanwckf.top/p/immortalwrt-mt798x)
 
@@ -18,13 +18,15 @@
 在 Actions 选择该工作流手动点击 Run workflow 执行编译，等待固件编译完成上传至 releases 发布即可下载
 
 ### 配置说明
-- 默认 LAN IP 可在 `scripts/diy.sh` 处修改
+- 默认 LAN IP 为 `10.0.0.1`，可在 `scripts/diy.sh` 处修改
 
 - 如需添加自定义 Feeds 可在 `scripts/diy1.sh` 处修改
 
 - 需要取消集成或添加其他软件包可在 `configs/rax3000m-emmc_mtksdk.config` 处参考注释内容自行修改或添加配置选项
 
-- 默认构建使用 OpenWrt 原生 luci 无线控制界面，如需使用 MTK SDK 无线控制界面 (luci-app-mtk) 请在 Run workflow 时取消勾选 “Use mtwifi-cfg”，或在 workflow 配置文件中将 `USE_MTWIFI_CFG` 中 `default: true` 的 true 改为 false，重新编译刷入使用
+- 默认集成 `luci-app-openclash`。
+
+- 防火墙默认使用 `firewall4`/`nftables`，不再集成旧 `iptables`/`fw3` 规则栈。
 
 - 默认构建 eeprom 替换为 H3C NX30 Pro 提取版本（来自 [237大佬](https://www.right.com.cn/forum/?364126) 提取）以增大无线功率，**原厂 eeprom 无线信号 2.4G: 23dBm, 5G: 22dBm；替换 nx30pro_eeprom 后 2.4G: 25dBm, 5G: 24dBm**。如需恢复使用默认 eeprom 请在 Run workflow 时取消勾选 “Use nx30pro eeprom”，或在 workflow 配置文件中将 `USE_NX30PRO_EEPROM` 中 `default: true` 的 true 改为 false，重新编译刷入使用  
   > eMMC 设备读取 eeprom 方式与 nand 闪存设备不同，所以修改方式也不同。其他设备包括 CMCC RAX3000M nand 版本若希望使用高功率 eeprom 可直接改用 237 的 https://github.com/padavanonly/immortalwrt-mt798x 仓库源码编译，或参考 https://github.com/padavanonly/immortalwrt-mt798x/commit/32ccfa4af7cd8eb6193c0394a06f5d32ac49c1f7 进行修改
