@@ -146,6 +146,9 @@ jobs:
         make download -j8 V=10
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
+        if [ ! -f staging_dir/target-aarch64_cortex-a53_musl/usr/include/mac80211-backport/backport/autoconf.h ]; then
+          make package/kernel/mac80211/{clean,compile} V=s
+        fi
 
     - name: 编译固件中
       id: compile
